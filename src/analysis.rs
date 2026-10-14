@@ -302,7 +302,13 @@ impl<'a> Analyzer<'a> {
                 result = true;
             }
             Stmt::Puts { value, .. } => {
-                self.expr_type(value)?;
+                let value_ty = self.expr_type(value)?;
+                if value_ty == TypeKind::Unit {
+                    return Err(Diagnostic::error(
+                        "argument to `puts` must be printable (`Int`, `Bool` or `String`)",
+                        value.span,
+                    ));
+                }
                 result = false;
             }
             Stmt::Expr(expr) => {
