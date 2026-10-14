@@ -226,4 +226,34 @@ mod tests {
         assert!(rendered.contains("x = 20"));
         assert!(rendered.contains("consider declaring as mutable: `let mut x`"));
     }
+
+    #[test]
+    fn read_parameter_mode() {
+        let source = "def print_str(s: read String) -> Unit\nputs s\nend\ndef main()\nlet msg: String = \"hi\"\nprint_str(msg)\nend";
+        let generated = compile(source).unwrap();
+        assert!(generated.contains("fn print_str(s: &str) -> ()"));
+        assert!(generated.contains("print_str(&msg)"));
+    }
+
+    #[test]
+    fn mut_parameter_mode() {
+        let source = "def update(s: mut String) -> Unit\nend\ndef main()\nlet mut msg: String = \"hi\"\nupdate(msg)\nend";
+        let generated = compile(source).unwrap();
+        assert!(generated.contains("fn update(s: &mut String) -> ()"));
+        assert!(generated.contains("update(&mut msg)"));
+    }
+
+    #[test]
+    fn rejects_immutable_to_mut_param() {
+        let source = "def update(s: mut String) -> Unit\nend\ndef main()\nlet msg: String = \"hi\"\nupdate(msg)\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("cannot pass immutable variable `msg` as mutable argument"));
+    }
+
+    #[test]
+    fn rejects_use_after_move() {
+        let source = "def consume(s: take String) -> Unit\nend\ndef main()\nlet msg: String = \"hi\"\nconsume(msg)\nputs msg\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("use of moved variable `msg`"));
+    }
 }

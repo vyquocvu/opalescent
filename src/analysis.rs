@@ -7,6 +7,8 @@ use crate::span::Span;
 #[derive(Clone)]
 struct VarInfo {
     mutable: bool,
+    ty: TypeKind,
+    moved: bool,
     span: Span,
 }
 
@@ -16,7 +18,7 @@ struct Scope {
 
 pub struct Analyzer<'a> {
     program: &'a Program,
-    function_signatures: HashMap<String, (usize, Span)>,
+    function_signatures: HashMap<String, (Vec<(ParamMode, TypeKind)>, Span)>,
     scopes: Vec<Scope>,
 }
 
@@ -47,8 +49,9 @@ impl<'a> Analyzer<'a> {
                     first_span.line, first_span.col
                 )));
             }
+            let sig = func.params.iter().map(|p| (p.mode, p.ty.kind)).collect();
             self.function_signatures
-                .insert(func.name.clone(), (func.params.len(), func.span));
+                .insert(func.name.clone(), (sig, func.span));
         }
 
         // Validate entry point: def main()
@@ -94,7 +97,9 @@ impl<'a> Analyzer<'a> {
             self.insert_var(
                 param.name.clone(),
                 VarInfo {
-                    mutable: false,
+                    mutable: param.mode == ParamMode::Mut,
+                    ty: param.ty.kind,
+                    moved: false,
                     span: param.span,
                 },
             );
@@ -114,15 +119,17 @@ impl<'a> Analyzer<'a> {
             Stmt::Let {
                 mutable,
                 name,
+                ty,
                 value,
                 span,
-                ..
             } => {
                 self.analyze_expr(value)?;
                 self.insert_var(
                     name.clone(),
                     VarInfo {
                         mutable: *mutable,
+                        ty: ty.kind,
+                        moved: false,
                         span: *span,
                     },
                 );
@@ -133,20 +140,24 @@ impl<'a> Analyzer<'a> {
                 span,
             } => {
                 self.analyze_expr(value)?;
-                let var = self.lookup_var(target).ok_or_else(|| {
+                let var = self.lookup_var_mut(target).ok_or_else(|| {
                     Diagnostic::error(format!("cannot assign to undefined variable `{target}`"), *span)
                 })?;
 
                 if !var.mutable {
+                    let var_span = var.span;
                     return Err(Diagnostic::error(
                         format!("cannot assign to immutable variable `{target}`"),
                         *span,
                     )
                     .with_hint(format!(
                         "`{target}` was defined as immutable at line {}:{}; consider declaring as mutable: `let mut {target}`",
-                        var.span.line, var.span.col
+                        var_span.line, var_span.col
                     )));
                 }
+
+                // If variable was moved, assigning reinitializes it
+                var.moved = false;
             }
             Stmt::If {
                 condition,
@@ -194,15 +205,20 @@ impl<'a> Analyzer<'a> {
         Ok(())
     }
 
-    fn analyze_expr(&self, expr: &Expr) -> Result<(), Diagnostic> {
+    fn analyze_expr(&mut self, expr: &Expr) -> Result<(), Diagnostic> {
         match &expr.kind {
             ExprKind::IntLit(_) | ExprKind::BoolLit(_) | ExprKind::StrLit(_) => Ok(()),
             ExprKind::Variable(name) => {
-                if self.lookup_var(name).is_none() {
+                let var = self.lookup_var(name).ok_or_else(|| {
+                    Diagnostic::error(format!("undefined variable `{name}`"), expr.span)
+                })?;
+
+                if var.moved {
                     return Err(Diagnostic::error(
-                        format!("undefined variable `{name}`"),
+                        format!("use of moved variable `{name}`"),
                         expr.span,
-                    ));
+                    )
+                    .with_hint("this variable was moved when passed by `take` in an earlier call"));
                 }
                 Ok(())
             }
@@ -213,12 +229,10 @@ impl<'a> Analyzer<'a> {
                 Ok(())
             }
             ExprKind::Call { callee, args } => {
-                for arg in args {
-                    self.analyze_expr(arg)?;
-                }
-                let &(expected_params, _) = self
+                let (params_sig, _) = self
                     .function_signatures
                     .get(callee)
+                    .cloned()
                     .ok_or_else(|| {
                         Diagnostic::error(
                             format!("call to undefined function `{callee}`"),
@@ -226,15 +240,71 @@ impl<'a> Analyzer<'a> {
                         )
                     })?;
 
-                if args.len() != expected_params {
+                if args.len() != params_sig.len() {
                     return Err(Diagnostic::error(
                         format!(
                             "function `{callee}` expects {} argument(s), but {} were provided",
-                            expected_params,
+                            params_sig.len(),
                             args.len()
                         ),
                         expr.span,
                     ));
+                }
+
+                // Analyze each argument and validate parameter modes
+                for (i, arg) in args.iter().enumerate() {
+                    let (mode, ty) = params_sig[i];
+                    match mode {
+                        ParamMode::Mut => {
+                            let var_name = match &arg.kind {
+                                ExprKind::Variable(name) => name,
+                                _ => {
+                                    return Err(Diagnostic::error(
+                                        "argument to `mut` parameter must be a variable",
+                                        arg.span,
+                                    ));
+                                }
+                            };
+
+                            let var = self.lookup_var(var_name).ok_or_else(|| {
+                                Diagnostic::error(
+                                    format!("undefined variable `{var_name}`"),
+                                    arg.span,
+                                )
+                            })?;
+
+                            if var.moved {
+                                return Err(Diagnostic::error(
+                                    format!("use of moved variable `{var_name}`"),
+                                    arg.span,
+                                )
+                                .with_hint("this variable was moved in an earlier call"));
+                            }
+
+                            if !var.mutable {
+                                return Err(Diagnostic::error(
+                                    format!("cannot pass immutable variable `{var_name}` as mutable argument"),
+                                    arg.span,
+                                )
+                                .with_hint("the parameter requires `mut` access; consider declaring with `let mut`"));
+                            }
+                        }
+                        ParamMode::Take => {
+                            self.analyze_expr(arg)?;
+                            if ty == TypeKind::String {
+                                if let ExprKind::Variable(var_name) = &arg.kind {
+                                    if let Some(var) = self.lookup_var_mut(var_name) {
+                                        if var.ty == TypeKind::String {
+                                            var.moved = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        ParamMode::Read => {
+                            self.analyze_expr(arg)?;
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -264,6 +334,15 @@ impl<'a> Analyzer<'a> {
     fn lookup_var(&self, name: &str) -> Option<&VarInfo> {
         for scope in self.scopes.iter().rev() {
             if let Some(info) = scope.variables.get(name) {
+                return Some(info);
+            }
+        }
+        None
+    }
+
+    fn lookup_var_mut(&mut self, name: &str) -> Option<&mut VarInfo> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(info) = scope.variables.get_mut(name) {
                 return Some(info);
             }
         }

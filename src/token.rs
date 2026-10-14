@@ -10,6 +10,8 @@ pub enum TokenKind {
     While,
     Let,
     Mut,
+    Read,
+    Take,
     Return,
     Puts,
     True,
@@ -57,7 +59,7 @@ impl TokenKind {
     pub fn is_reserved_keyword(s: &str) -> bool {
         matches!(
             s,
-            "fn" | "let" | "mut" | "if" | "else" | "while" | "loop" | "match" | "use" | "mod"
+            "fn" | "let" | "mut" | "read" | "take" | "if" | "else" | "while" | "loop" | "match" | "use" | "mod"
                 | "pub" | "unsafe" | "as" | "return" | "true" | "false" | "end" | "def" | "do"
                 | "struct" | "impl" | "trait" | "enum" | "const" | "static" | "move" | "ref"
                 | "self" | "Self" | "crate" | "super" | "type" | "where" | "async" | "await"
@@ -74,6 +76,8 @@ impl TokenKind {
             TokenKind::While => "`while`",
             TokenKind::Let => "`let`",
             TokenKind::Mut => "`mut`",
+            TokenKind::Read => "`read`",
+            TokenKind::Take => "`take`",
             TokenKind::Return => "`return`",
             TokenKind::Puts => "`puts`",
             TokenKind::True => "`true`",

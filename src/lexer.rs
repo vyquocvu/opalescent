@@ -261,6 +261,8 @@ impl<'a> Lexer<'a> {
             "while" => TokenKind::While,
             "let" => TokenKind::Let,
             "mut" => TokenKind::Mut,
+            "read" => TokenKind::Read,
+            "take" => TokenKind::Take,
             "return" => TokenKind::Return,
             "puts" => TokenKind::Puts,
             "true" => TokenKind::True,

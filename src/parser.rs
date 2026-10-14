@@ -51,10 +51,24 @@ impl Parser {
                 };
 
                 self.expect(TokenKind::Colon)?;
+                let mode = if self.check(&TokenKind::Read) {
+                    self.advance();
+                    ParamMode::Read
+                } else if self.check(&TokenKind::Mut) {
+                    self.advance();
+                    ParamMode::Mut
+                } else if self.check(&TokenKind::Take) {
+                    self.advance();
+                    ParamMode::Take
+                } else {
+                    ParamMode::Read
+                };
+
                 let p_ty = self.parse_type()?;
                 let p_span = p_name_tok.span.combine(p_ty.span);
 
                 params.push(Param {
+                    mode,
                     name: p_name,
                     ty: p_ty,
                     span: p_span,

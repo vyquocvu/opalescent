@@ -25,8 +25,26 @@ pub struct Type {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamMode {
+    Read,
+    Mut,
+    Take,
+}
+
+impl ParamMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParamMode::Read => "read",
+            ParamMode::Mut => "mut",
+            ParamMode::Take => "take",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Param {
+    pub mode: ParamMode,
     pub name: String,
     pub ty: Type,
     pub span: Span,
