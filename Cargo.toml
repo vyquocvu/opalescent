@@ -8,3 +8,7 @@ license = "MIT"
 [[bin]]
 name = "opal"
 path = "src/main.rs"
+
+[lib]
+name = "opalescent"
+path = "src/lib.rs"
