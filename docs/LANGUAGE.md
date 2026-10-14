@@ -42,14 +42,21 @@ cargo run -- build examples/hello.opal -o hello
 - Integers, strings, booleans, function calls, parentheses, arithmetic, comparisons, boolean operations and unary `!`/`-`.
 - `#` comments outside strings.
 
-## Safety model
+## Safety & Diagnostic model
 
-Source is tokenized and parsed into a restricted expression grammar. It emits `#![forbid(unsafe_code)]` and compiles through `rustc`. Rust type checking, borrow checking, and ownership apply to the generated program. Mutable variables require `mut`. This MVP does **not** expose explicit borrowing/reference syntax, user-defined structs, generics, modules, IO or FFI. It does not claim Rust-level safety for future language features without dedicated validation. Integer overflow behavior follows the compilation profile; future releases must specify it explicitly. Compiler-generated errors currently reference generated Rust lines.
+Source code is processed through a modular compiler pipeline:
+1. **Lexer (`src/lexer.rs`):** Emits span-aware tokens tracking byte offsets, lines, and columns.
+2. **Parser (`src/parser.rs`):** Builds a typed Abstract Syntax Tree (`src/ast.rs`) via precedence-climbing.
+3. **Semantic Analyzer (`src/analysis.rs`):** Validates the `main` entry point, duplicate definitions, undeclared variables, immutable assignments, and call arity prior to codegen.
+4. **Diagnostics (`src/diagnostics.rs`):** Renders rustc-style source code snippets with aligned carets, column locations, and actionable hints.
+5. **Codegen (`src/codegen.rs`):** Emits safe Rust emitting `#![forbid(unsafe_code)]` and `#![allow(unused_parens)]`, compiled via `rustc`.
 
-## Next milestones
+This MVP does **not** expose explicit borrowing/reference syntax, user-defined structs, generics, modules, IO or FFI. It does not claim Rust-level safety for future language features without dedicated validation. Integer overflow behavior follows the compilation profile.
 
-1. Introduce span-aware lexer/AST and diagnostic source maps; enforce declaration and duplicate-name checks.
-2. Add `&T`, `&mut T`, moves, lifetimes via an explicit surface type system; compile-fail ownership tests.
-3. Typed HIR/MIR with control-flow analysis and exhaustive tests, and a documented standard library.
-4. Benchmark optimized native binaries against Rust; fuzz parser, build reproducibility, and harden CLI.
-5. Consider LLVM/Cranelift backend only after language semantics are stable.
+## Milestones
+
+- [x] **Milestone 1: Modular Pipeline & Native Diagnostics:** Span-aware lexer/AST, static validation, duplicate-name checks, immutable assignment checks, stdin piping (`-`), and source-mapped diagnostics.
+- [ ] **Milestone 2: Surface Types & Parameter Modes:** Introduce `read T` / `mut T` parameter conventions, borrowing syntax, and compile-fail ownership test fixtures.
+- [ ] **Milestone 3: Typed HIR/MIR & Control-flow Analysis:** Complete control-flow graph, dead-code detection, and exhaustiveness checking.
+- [ ] **Milestone 4: Conformance & Benchmarks:** Measure throughput, peak RSS, and compile times against equivalent Rust and Ruby implementations.
+- [ ] **Milestone 5: Native Backend:** Explore LLVM / Cranelift codegen once language semantics stabilize.
