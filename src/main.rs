@@ -155,7 +155,7 @@ fn assignment_pos(t: &[Token]) -> Option<usize> {
     }
     None
 }
-fn signature(t: &[Token]) -> Result<(String, bool), String> {
+fn signature(t: &[Token]) -> Result<String, String> {
     // def name(arg: Type, ...) -> Type
     let function = name(t.get(1).ok_or("missing function name")?)?;
     let mut i = 2;
@@ -171,14 +171,14 @@ fn signature(t: &[Token]) -> Result<(String, bool), String> {
         }
     }
     expect(t, &mut i, ")")?;
-    let (ret, returns) = if t.get(i).is_some_and(|v| sym(v, "->")) {
-        i += 1; let r = ty(t.get(i).ok_or("missing return type")?)?; i += 1; (r, r != "()")
-    } else { ("()", false) };
+    let ret = if t.get(i).is_some_and(|v| sym(v, "->")) {
+        i += 1; let r = ty(t.get(i).ok_or("missing return type")?)?; i += 1; r
+    } else { "()" };
     if i != t.len() { return Err("unexpected token in function declaration".into()); }
-    Ok((format!("fn {function}({}) -> {ret} {{", params.join(", ")), returns))
+    Ok(format!("fn {function}({}) -> {ret} {{", params.join(", ")))
 }
 #[derive(Clone, Copy)]
-enum Block { Function(bool), If, While }
+enum Block { Function, If, While }
 fn compile(src: &str) -> Result<String, String> {
     let mut functions = String::new();
     let mut main = String::from("fn main() {\n");
@@ -194,14 +194,14 @@ fn compile(src: &str) -> Result<String, String> {
             let first = &t[0];
             if ident(first, "def") {
                 if !stack.is_empty() || in_function { return Err("nested functions are not supported".into()); }
-                let (s, returns) = signature(&t)?;
+                let s = signature(&t)?;
                 body.push_str(&s); body.push('\n');
-                stack.push(Block::Function(returns)); in_function = true;
+                stack.push(Block::Function); in_function = true;
             } else if ident(first, "end") {
                 if t.len() != 1 { return Err("end takes no arguments".into()); }
                 let block = stack.pop().ok_or("unmatched end")?;
                 body.push_str("}\n");
-                if matches!(block, Block::Function(_)) {
+                if matches!(block, Block::Function) {
                     functions.push_str(&body); body.clear(); in_function = false;
                 }
             } else if ident(first, "else") {
@@ -246,7 +246,7 @@ fn compile(src: &str) -> Result<String, String> {
     if !stack.is_empty() { return Err("unclosed block: expected end".into()); }
     if !functions.contains("fn main(") { return Err("define def main() as the entry point".into()); }
     main.clear();
-    Ok(format!("#![forbid(unsafe_code)]\n{functions}{main}"))
+    Ok(format!("#![forbid(unsafe_code)]\n#![allow(unused_parens)]\n{functions}{main}"))
 }
 fn usage() -> ! {
     eprintln!("Usage: opal <check|build|run|emit-rust> <file.opal> [-o output]");
