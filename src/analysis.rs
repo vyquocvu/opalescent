@@ -465,8 +465,34 @@ impl<'a> Analyzer<'a> {
                     ));
                 }
 
+                let arg_vars: Vec<Option<String>> = args
+                    .iter()
+                    .map(|a| match &a.kind {
+                        ExprKind::Variable(name) => Some(name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+
                 for (i, arg) in args.iter().enumerate() {
                     let (mode, param_ty) = params_sig[i];
+                    if let Some(name) = &arg_vars[i] {
+                        if mode == ParamMode::Mut || mode == ParamMode::Take {
+                            for (j, other) in arg_vars.iter().enumerate() {
+                                if j == i {
+                                    continue;
+                                }
+                                if other.as_deref() == Some(name.as_str()) {
+                                    return Err(Diagnostic::error(
+                                        format!(
+                                            "cannot pass `{name}` as a {} argument while it is also used in another argument",
+                                            if mode == ParamMode::Mut { "mutable" } else { "consumed" }
+                                        ),
+                                        arg.span,
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     match mode {
                         ParamMode::Mut => {
                             let var_name = match &arg.kind {
