@@ -256,4 +256,47 @@ mod tests {
         let err = compile(source).unwrap_err();
         assert!(err.message.contains("use of moved variable `msg`"));
     }
+
+    #[test]
+    fn rejects_type_mismatch_binding() {
+        let source = "def main()\nlet x: Int = true\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("type mismatch in binding"));
+    }
+
+    #[test]
+    fn rejects_non_bool_condition() {
+        let source = "def main()\nif 1\nputs 1\nend\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("must be `Bool`"));
+    }
+
+    #[test]
+    fn rejects_missing_return_path() {
+        let source = "def f(x: Int) -> Int\nif x < 0\nreturn 0\nend\nend\ndef main()\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("not all control paths return a value"));
+    }
+
+    #[test]
+    fn rejects_unreachable_after_return() {
+        let source = "def main()\nreturn\nputs 1\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("unreachable code"));
+    }
+
+    #[test]
+    fn rejects_unreachable_constant_branch() {
+        let source = "def main()\nif true\nputs 1\nelse\nputs 2\nend\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("unreachable code"));
+    }
+
+
+    #[test]
+    fn rejects_call_exclusivity() {
+        let source = "def f(a: mut Int, b: mut Int) -> Unit\nend\ndef main()\nlet mut x: Int = 1\nf(x, x)\nend";
+        let err = compile(source).unwrap_err();
+        assert!(err.message.contains("while it is also used in another argument"));
+    }
 }
