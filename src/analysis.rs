@@ -16,9 +16,11 @@ struct Scope {
     variables: HashMap<String, VarInfo>,
 }
 
+type FunctionSignature = (Vec<(ParamMode, TypeKind)>, TypeKind, Span);
+
 pub struct Analyzer<'a> {
     program: &'a Program,
-    function_signatures: HashMap<String, (Vec<(ParamMode, TypeKind)>, TypeKind, Span)>,
+    function_signatures: HashMap<String, FunctionSignature>,
     scopes: Vec<Scope>,
     current_return_type: TypeKind,
 }
