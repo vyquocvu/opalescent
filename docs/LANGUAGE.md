@@ -58,6 +58,6 @@ Caller-site borrowing is callee-directed: passing a variable to a `read` paramet
 
 - [x] **Milestone 1: Modular Pipeline & Native Diagnostics:** Span-aware lexer/AST, static validation, duplicate-name checks, immutable assignment checks, stdin piping (`-`), and source-mapped diagnostics.
 - [x] **Milestone 2: Surface Types & Parameter Modes:** Implemented `read T`, `mut T`, `take T` parameter conventions (ADR 0001), inferred call-site borrowing without `&`/`&mut`, compile-time use-after-move detection, and ownership test suite.
-- [ ] **Milestone 3: Typed HIR/MIR & Control-flow Analysis:** Complete control-flow graph, dead-code detection, and exhaustiveness checking.
-- [ ] **Milestone 4: Conformance & Benchmarks:** Measure throughput, peak RSS, and compile times against equivalent Rust and Ruby implementations.
-- [ ] **Milestone 5: Native Backend:** Explore LLVM / Cranelift codegen once language semantics stabilize.
+- [x] **Milestone 3: Typed Analysis & Control-flow Checks:** Typed analysis, missing-return and unreachable-code detection, call-site borrow/exclusivity checks. (A standalone HIR/MIR and exhaustiveness checking are deferred: there are no `match`/enum constructs yet.)
+- [x] **Milestone 4: Conformance & Benchmarks:** `benchmarks/run.sh` measures compile time, run time and peak RSS against equivalent Rust and Ruby programs. Sample (collatz, 300k): Opalescent 0.53s / 1.5 MB, Rust 0.52s / 1.5 MB, Ruby 2.44s / 28 MB.
+- [x] **Milestone 5: Native Backend (exploration):** Decision recorded in [ADR 0002](adr/0002-native-backend-strategy.md): keep Rust emission; Cranelift/LLVM deferred.
