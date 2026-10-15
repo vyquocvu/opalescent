@@ -4,10 +4,10 @@ No language design item is approved merely because example syntax appears elsewh
 
 | ID | Question | Options | Priority | Status |
 |---|---|---|---|---|
-| D001 | Ownership foundation | affine/borrow; mutable-value/access; hybrid | Critical | OPEN |
-| D002 | Parameter conventions | read/mut/take; &/&mut/move; other | Critical | OPEN |
-| D003 | Caller move notation | always explicit; inferred at last use | Critical | OPEN |
-| D004 | Implicit cost policy | prohibit clones/heap promotion; narrowly permit with annotation | Critical | DECIDED-PROVISIONAL: prohibit |
+| D001 | Ownership foundation | affine/borrow; mutable-value/access; hybrid | Critical | DECIDED-PROVISIONAL: affine/borrow (ADR 0001) |
+| D002 | Parameter conventions | read/mut/take; &/&mut/move; other | Critical | DECIDED-PROVISIONAL: read/mut/take (ADR 0001) |
+| D003 | Caller move notation | always explicit; inferred at last use | Critical | DECIDED-PROVISIONAL: callee-directed inference (ADR 0001) |
+| D004 | Implicit cost policy | prohibit clones/heap promotion; narrowly permit with annotation | Critical | DECIDED-PROVISIONAL: prohibit (ADR 0001) |
 | D005 | Binding syntax | let/mut; Ruby-like x=/var | High | OPEN |
 | D006 | Type inference boundary | local only; return inference; public API explicit | High | OPEN |
 | D007 | Value vs identity | values-first; reference objects | High | OPEN |

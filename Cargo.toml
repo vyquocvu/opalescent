@@ -1,0 +1,14 @@
+[package]
+name = "opalescent"
+version = "0.1.0"
+edition = "2021"
+description = "An experimental Ruby-shaped native language compiled through Rust"
+license = "MIT"
+
+[[bin]]
+name = "opal"
+path = "src/main.rs"
+
+[lib]
+name = "opalescent"
+path = "src/lib.rs"
