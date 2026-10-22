@@ -1,18 +1,17 @@
 use crate::span::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Int,
     Bool,
     String,
     Unit,
-    /// User-defined enum. The name is interned via `Box::leak` so the type
-    /// stays `Copy`; the compiler is a short-lived process.
-    Enum(&'static str),
+    /// User-defined enum, identified by name.
+    Enum(String),
 }
 
 impl TypeKind {
-    pub fn rust_type(&self) -> &'static str {
+    pub fn rust_type(&self) -> &str {
         match self {
             TypeKind::Int => "i64",
             TypeKind::Bool => "bool",

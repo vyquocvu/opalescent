@@ -22,7 +22,6 @@ pub struct Analyzer<'a> {
     program: &'a Program,
     function_signatures: HashMap<String, FunctionSignature>,
     enums: HashMap<String, (Vec<String>, Span)>,
-    enum_names: HashMap<String, &'static str>,
     scopes: Vec<Scope>,
     current_return_type: TypeKind,
 }
@@ -33,7 +32,6 @@ impl<'a> Analyzer<'a> {
             program,
             function_signatures: HashMap::new(),
             enums: HashMap::new(),
-            enum_names: HashMap::new(),
             scopes: Vec::new(),
             current_return_type: TypeKind::Unit,
         }
@@ -73,8 +71,6 @@ impl<'a> Analyzer<'a> {
                 names.push(v.name.clone());
             }
             self.enums.insert(e.name.clone(), (names, e.span));
-            let leaked: &'static str = Box::leak(e.name.clone().into_boxed_str());
-            self.enum_names.insert(e.name.clone(), leaked);
         }
 
         for func in &self.program.functions {
@@ -95,9 +91,13 @@ impl<'a> Analyzer<'a> {
                     first_span.line, first_span.col
                 )));
             }
-            let sig = func.params.iter().map(|p| (p.mode, p.ty.kind)).collect();
+            let sig = func
+                .params
+                .iter()
+                .map(|p| (p.mode, p.ty.kind.clone()))
+                .collect();
             self.function_signatures
-                .insert(func.name.clone(), (sig, func.ret_ty.kind, func.span));
+                .insert(func.name.clone(), (sig, func.ret_ty.kind.clone(), func.span));
         }
 
         let main_fn = self
@@ -129,7 +129,7 @@ impl<'a> Analyzer<'a> {
     fn analyze_function(&mut self, func: &FunctionDecl) -> Result<(), Diagnostic> {
         self.scopes.clear();
         self.push_scope();
-        self.current_return_type = func.ret_ty.kind;
+        self.current_return_type = func.ret_ty.kind.clone();
 
         for param in &func.params {
             if self.lookup_local(&param.name).is_some() {
@@ -142,7 +142,7 @@ impl<'a> Analyzer<'a> {
                 param.name.clone(),
                 VarInfo {
                     mutable: param.mode == ParamMode::Mut,
-                    ty: param.ty.kind,
+                    ty: param.ty.kind.clone(),
                     moved: false,
                     span: param.span,
                 },
@@ -203,7 +203,7 @@ impl<'a> Analyzer<'a> {
                     name.clone(),
                     VarInfo {
                         mutable: *mutable,
-                        ty: ty.kind,
+                        ty: ty.kind.clone(),
                         moved: false,
                         span: *span,
                     },
@@ -233,7 +233,7 @@ impl<'a> Analyzer<'a> {
                 }
 
                 if var.ty != value_ty {
-                    let expected = var.ty;
+                    let expected = var.ty.clone();
                     return Err(Diagnostic::error(
                         format!(
                             "type mismatch in assignment to `{target}`: expected `{}`, found `{}`",
@@ -378,7 +378,7 @@ impl<'a> Analyzer<'a> {
                 };
                 let variants: Vec<String> = self
                     .enums
-                    .get(enum_name)
+                    .get(&enum_name)
                     .map(|(v, _)| v.clone())
                     .unwrap_or_default();
 
@@ -481,12 +481,7 @@ impl<'a> Analyzer<'a> {
                         expr.span,
                     ));
                 }
-                let name: &'static str = self
-                    .enum_names
-                    .get(enum_name.as_str())
-                    .copied()
-                    .unwrap_or("");
-                Ok(TypeKind::Enum(name))
+                Ok(TypeKind::Enum(enum_name.clone()))
             }
             ExprKind::Variable(name) => {
                 let var = self.lookup_var(name).ok_or_else(|| {
@@ -500,7 +495,7 @@ impl<'a> Analyzer<'a> {
                     )
                     .with_hint("this variable was moved when passed by `take` in an earlier call"));
                 }
-                Ok(var.ty)
+                Ok(var.ty.clone())
             }
             ExprKind::Unary { op, expr: inner } => {
                 let inner_ty = self.expr_type(inner)?;
@@ -644,7 +639,7 @@ impl<'a> Analyzer<'a> {
                     .collect();
 
                 for (i, arg) in args.iter().enumerate() {
-                    let (mode, param_ty) = params_sig[i];
+                    let (mode, param_ty) = params_sig[i].clone();
                     if let Some(name) = &arg_vars[i] {
                         if mode == ParamMode::Mut || mode == ParamMode::Take {
                             for (j, other) in arg_vars.iter().enumerate() {
@@ -757,7 +752,7 @@ impl<'a> Analyzer<'a> {
     }
 
     fn check_type(&self, ty: &Type) -> Result<(), Diagnostic> {
-        if let TypeKind::Enum(name) = ty.kind {
+        if let TypeKind::Enum(name) = &ty.kind {
             if !self.enums.contains_key(name) {
                 return Err(Diagnostic::error(
                     format!("unknown type `{name}`"),
@@ -808,11 +803,11 @@ impl<'a> Analyzer<'a> {
 }
 
 trait TypeKindExt {
-    fn rust_type_name(&self) -> &'static str;
+    fn rust_type_name(&self) -> &str;
 }
 
 impl TypeKindExt for TypeKind {
-    fn rust_type_name(&self) -> &'static str {
+    fn rust_type_name(&self) -> &str {
         match self {
             TypeKind::Int => "Int",
             TypeKind::Bool => "Bool",

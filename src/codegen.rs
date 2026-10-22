@@ -11,7 +11,11 @@ impl<'a> CodeGenerator<'a> {
     pub fn new(program: &'a Program) -> Self {
         let mut fn_signatures = HashMap::new();
         for func in &program.functions {
-            let sig = func.params.iter().map(|p| (p.mode, p.ty.kind)).collect();
+            let sig = func
+                .params
+                .iter()
+                .map(|p| (p.mode, p.ty.kind.clone()))
+                .collect();
             fn_signatures.insert(func.name.clone(), sig);
         }
         Self {
@@ -227,14 +231,14 @@ impl<'a> CodeGenerator<'a> {
                     .enumerate()
                     .map(|(i, arg)| {
                         if let Some(params) = sig {
-                            if let Some(&(mode, ty)) = params.get(i) {
+                            if let Some((mode, ty)) = params.get(i) {
                                 match mode {
                                     ParamMode::Mut => {
                                         let inner = self.generate_expr(arg);
                                         return format!("&mut {inner}");
                                     }
                                     ParamMode::Read => {
-                                        if ty == TypeKind::String {
+                                        if *ty == TypeKind::String {
                                             if let ExprKind::StrLit(s) = &arg.kind {
                                                 return format!("{s:?}");
                                             }

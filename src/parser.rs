@@ -389,7 +389,7 @@ impl Parser {
             TokenKind::TyString => TypeKind::String,
             TokenKind::TyUnit => TypeKind::Unit,
             // Resolved (and rejected if unknown) by the analyzer.
-            TokenKind::Ident(name) => TypeKind::Enum(Box::leak(name.into_boxed_str())),
+            TokenKind::Ident(name) => TypeKind::Enum(name),
             _ => {
                 return Err(Diagnostic::error(
                     format!(
