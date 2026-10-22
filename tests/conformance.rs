@@ -23,6 +23,21 @@ const FAIL: &[(&str, &str, &str, usize)] = &[
     ("unterminated_string", "def main()\nputs \"abc\nend", "", 2),
     ("unclosed_if", "def main()\nif true\nend", "", 0),
     ("injection", "def main()\nputs 1; std::process::exit(1)\nend", "", 2),
+    ("dup_enum", "enum C\nA\nend\nenum C\nB\nend\ndef main()\nend", "duplicate enum definition: `C`", 4),
+    ("empty_enum", "enum C\nend\ndef main()\nend", "must have at least one variant", 1),
+    ("dup_variant", "enum C\nA\nA\nend\ndef main()\nend", "duplicate variant `A` in enum `C`", 3),
+    ("unknown_type", "enum C\nA\nend\ndef main()\nlet x: Shade = C.A\nend", "unknown type `Shade`", 5),
+    ("unknown_param_type", "def f(x: Shade) -> Int\nreturn 1\nend\ndef main()\nend", "unknown type `Shade`", 1),
+    ("unknown_enum_expr", "def main()\nlet x: Int = Shade.Red\nend", "unknown enum `Shade`", 2),
+    ("unknown_variant", "enum C\nA\nend\ndef main()\nlet x: C = C.B\nend", "enum `C` has no variant `B`", 5),
+    ("match_non_enum", "def main()\nlet x: Int = 1\nmatch x\nwhen C.A\nputs 1\nend\nend", "`match` scrutinee must be an enum", 3),
+    ("match_pattern_enum_mismatch", "enum C\nA\nend\nenum D\nB\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen D.B\nputs 1\nend\nend", "does not match scrutinee type", 10),
+    ("match_unknown_variant", "enum C\nA\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen C.Z\nputs 1\nend\nend", "has no variant `Z`", 7),
+    ("non_exhaustive_match", "enum C\nA\nB\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen C.A\nputs 1\nend\nend", "non-exhaustive `match`: missing `C.B`", 7),
+    ("unreachable_pattern", "enum C\nA\nB\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen C.A\nputs 1\nwhen C.A\nputs 2\nend\nend", "unreachable pattern", 10),
+    ("unreachable_match_else", "enum C\nA\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen C.A\nputs 1\nelse\nputs 2\nend\nend", "unreachable `else`", 10),
+    ("match_no_arms", "enum C\nA\nend\ndef main()\nlet x: C = C.A\nmatch x\nend\nend", "must have at least one `when` arm or an `else` branch", 6),
+    ("puts_enum", "enum C\nA\nend\ndef main()\nputs C.A\nend", "must be printable", 5),
 ];
 
 #[test]
@@ -57,6 +72,16 @@ const PASS: &[(&str, &str, &[&str])] = &[
     ("bool_ops", "def main()\nputs !false && (1 < 2 || 3 == 4)\nend", &["println!"]),
     ("neg", "def main()\nputs -5\nend", &["println!"]),
     ("comment", "# c\ndef main()\nputs 1 # trailing\nend", &["println!"]),
+    (
+        "enum_match",
+        "enum Color\nRed\nGreen\nBlue\nUnknown\nend\ndef describe(c: read Color) -> String\nmatch c\nwhen Color.Red\nreturn \"red\"\nwhen Color.Green, Color.Blue\nreturn \"cool\"\nelse\nreturn \"other\"\nend\nend\ndef main()\nputs describe(Color.Green)\nend",
+        &["enum Color", "Color::Green | Color::Blue", "match c", "_ =>"],
+    ),
+    (
+        "enum_exhaustive",
+        "enum Color\nRed\nGreen\nend\ndef main()\nlet c: Color = Color.Red\nmatch c\nwhen Color.Red\nputs 1\nwhen Color.Green\nputs 2\nend\nend",
+        &["enum Color", "Color::Red =>", "let c: Color = Color::Red"],
+    ),
 ];
 
 #[test]

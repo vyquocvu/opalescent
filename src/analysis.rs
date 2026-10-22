@@ -21,6 +21,8 @@ type FunctionSignature = (Vec<(ParamMode, TypeKind)>, TypeKind, Span);
 pub struct Analyzer<'a> {
     program: &'a Program,
     function_signatures: HashMap<String, FunctionSignature>,
+    enums: HashMap<String, (Vec<String>, Span)>,
+    enum_names: HashMap<String, &'static str>,
     scopes: Vec<Scope>,
     current_return_type: TypeKind,
 }
@@ -30,6 +32,8 @@ impl<'a> Analyzer<'a> {
         Self {
             program,
             function_signatures: HashMap::new(),
+            enums: HashMap::new(),
+            enum_names: HashMap::new(),
             scopes: Vec::new(),
             current_return_type: TypeKind::Unit,
         }
@@ -41,6 +45,45 @@ impl<'a> Analyzer<'a> {
     }
 
     fn run(&mut self) -> Result<(), Diagnostic> {
+        for e in &self.program.enums {
+            if let Some((_, first_span)) = self.enums.get(&e.name) {
+                return Err(Diagnostic::error(
+                    format!("duplicate enum definition: `{}`", e.name),
+                    e.span,
+                )
+                .with_hint(format!(
+                    "first defined at line {}:{}",
+                    first_span.line, first_span.col
+                )));
+            }
+            if e.variants.is_empty() {
+                return Err(Diagnostic::error(
+                    format!("enum `{}` must have at least one variant", e.name),
+                    e.span,
+                ));
+            }
+            let mut names: Vec<String> = Vec::new();
+            for v in &e.variants {
+                if names.contains(&v.name) {
+                    return Err(Diagnostic::error(
+                        format!("duplicate variant `{}` in enum `{}`", v.name, e.name),
+                        v.span,
+                    ));
+                }
+                names.push(v.name.clone());
+            }
+            self.enums.insert(e.name.clone(), (names, e.span));
+            let leaked: &'static str = Box::leak(e.name.clone().into_boxed_str());
+            self.enum_names.insert(e.name.clone(), leaked);
+        }
+
+        for func in &self.program.functions {
+            for p in &func.params {
+                self.check_type(&p.ty)?;
+            }
+            self.check_type(&func.ret_ty)?;
+        }
+
         for func in &self.program.functions {
             if let Some((_, _, first_span)) = self.function_signatures.get(&func.name) {
                 return Err(Diagnostic::error(
@@ -144,6 +187,7 @@ impl<'a> Analyzer<'a> {
                 value,
                 span,
             } => {
+                self.check_type(ty)?;
                 let value_ty = self.expr_type(value)?;
                 if value_ty != ty.kind {
                     return Err(Diagnostic::error(
@@ -305,13 +349,114 @@ impl<'a> Analyzer<'a> {
             }
             Stmt::Puts { value, .. } => {
                 let value_ty = self.expr_type(value)?;
-                if value_ty == TypeKind::Unit {
+                if value_ty == TypeKind::Unit || matches!(value_ty, TypeKind::Enum(_)) {
                     return Err(Diagnostic::error(
                         "argument to `puts` must be printable (`Int`, `Bool` or `String`)",
                         value.span,
                     ));
                 }
                 result = false;
+            }
+            Stmt::Match {
+                scrutinee,
+                arms,
+                else_branch,
+                span,
+            } => {
+                let scrutinee_ty = self.expr_type(scrutinee)?;
+                let enum_name = match scrutinee_ty {
+                    TypeKind::Enum(n) => n,
+                    other => {
+                        return Err(Diagnostic::error(
+                            format!(
+                                "`match` scrutinee must be an enum, found `{}`",
+                                other.rust_type_name()
+                            ),
+                            scrutinee.span,
+                        ));
+                    }
+                };
+                let variants: Vec<String> = self
+                    .enums
+                    .get(enum_name)
+                    .map(|(v, _)| v.clone())
+                    .unwrap_or_default();
+
+                if arms.is_empty() && else_branch.is_none() {
+                    return Err(Diagnostic::error(
+                        "`match` must have at least one `when` arm or an `else` branch",
+                        *span,
+                    ));
+                }
+
+                let mut covered: Vec<String> = Vec::new();
+                let mut all_return = true;
+                for arm in arms {
+                    for p in &arm.patterns {
+                        if p.enum_name != enum_name {
+                            return Err(Diagnostic::error(
+                                format!(
+                                    "pattern `{}.{}` does not match scrutinee type `{enum_name}`",
+                                    p.enum_name, p.variant
+                                ),
+                                p.span,
+                            ));
+                        }
+                        if !variants.contains(&p.variant) {
+                            return Err(Diagnostic::error(
+                                format!("enum `{enum_name}` has no variant `{}`", p.variant),
+                                p.span,
+                            ));
+                        }
+                        if covered.contains(&p.variant) {
+                            return Err(Diagnostic::error(
+                                format!(
+                                    "unreachable pattern: `{enum_name}.{}` is already covered",
+                                    p.variant
+                                ),
+                                p.span,
+                            ));
+                        }
+                        covered.push(p.variant.clone());
+                    }
+                    self.push_scope();
+                    let r = self.analyze_block(&arm.body)?;
+                    self.pop_scope();
+                    all_return &= r;
+                }
+
+                let missing: Vec<String> = variants
+                    .iter()
+                    .filter(|v| !covered.contains(v))
+                    .map(|v| format!("`{enum_name}.{v}`"))
+                    .collect();
+
+                match else_branch {
+                    Some(stmts) => {
+                        if missing.is_empty() {
+                            return Err(Diagnostic::error(
+                                format!(
+                                    "unreachable `else`: all variants of `{enum_name}` are already covered"
+                                ),
+                                stmts.first().map(|s| s.span()).unwrap_or(*span),
+                            ));
+                        }
+                        self.push_scope();
+                        let r = self.analyze_block(stmts)?;
+                        self.pop_scope();
+                        all_return &= r;
+                    }
+                    None => {
+                        if !missing.is_empty() {
+                            return Err(Diagnostic::error(
+                                format!("non-exhaustive `match`: missing {}", missing.join(", ")),
+                                *span,
+                            )
+                            .with_hint("add the missing `when` arm(s) or an `else` branch"));
+                        }
+                    }
+                }
+                result = all_return;
             }
             Stmt::Expr(expr) => {
                 self.expr_type(expr)?;
@@ -326,6 +471,23 @@ impl<'a> Analyzer<'a> {
             ExprKind::IntLit(_) => Ok(TypeKind::Int),
             ExprKind::BoolLit(_) => Ok(TypeKind::Bool),
             ExprKind::StrLit(_) => Ok(TypeKind::String),
+            ExprKind::Variant { enum_name, variant } => {
+                let (variants, _) = self.enums.get(enum_name).ok_or_else(|| {
+                    Diagnostic::error(format!("unknown enum `{enum_name}`"), expr.span)
+                })?;
+                if !variants.contains(variant) {
+                    return Err(Diagnostic::error(
+                        format!("enum `{enum_name}` has no variant `{variant}`"),
+                        expr.span,
+                    ));
+                }
+                let name: &'static str = self
+                    .enum_names
+                    .get(enum_name.as_str())
+                    .copied()
+                    .unwrap_or("");
+                Ok(TypeKind::Enum(name))
+            }
             ExprKind::Variable(name) => {
                 let var = self.lookup_var(name).ok_or_else(|| {
                     Diagnostic::error(format!("undefined variable `{name}`"), expr.span)
@@ -594,6 +756,18 @@ impl<'a> Analyzer<'a> {
         }
     }
 
+    fn check_type(&self, ty: &Type) -> Result<(), Diagnostic> {
+        if let TypeKind::Enum(name) = ty.kind {
+            if !self.enums.contains_key(name) {
+                return Err(Diagnostic::error(
+                    format!("unknown type `{name}`"),
+                    ty.span,
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn push_scope(&mut self) {
         self.scopes.push(Scope {
             variables: HashMap::new(),
@@ -644,6 +818,7 @@ impl TypeKindExt for TypeKind {
             TypeKind::Bool => "Bool",
             TypeKind::String => "String",
             TypeKind::Unit => "Unit",
+            TypeKind::Enum(name) => name,
         }
     }
 }

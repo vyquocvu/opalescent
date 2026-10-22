@@ -29,7 +29,13 @@ impl<'a> CodeGenerator<'a> {
         let mut out = String::new();
         out.push_str("#![forbid(unsafe_code)]\n");
         out.push_str("#![allow(unused_parens)]\n");
-        out.push_str("#![allow(unused_variables)]\n\n");
+        out.push_str("#![allow(unused_variables)]\n");
+        out.push_str("#![allow(dead_code)]\n\n");
+
+        for decl in &self.program.enums {
+            self.generate_enum(decl, &mut out);
+            out.push('\n');
+        }
 
         for func in &self.program.functions {
             self.generate_function(func, &mut out);
@@ -37,6 +43,16 @@ impl<'a> CodeGenerator<'a> {
         }
 
         out
+    }
+
+    fn generate_enum(&self, decl: &EnumDecl, out: &mut String) {
+        let variants: Vec<&str> = decl.variants.iter().map(|v| v.name.as_str()).collect();
+        out.push_str("#[derive(Clone, Copy, PartialEq, Eq, Debug)]\n");
+        out.push_str(&format!(
+            "enum {} {{ {} }}\n",
+            decl.name,
+            variants.join(", ")
+        ));
     }
 
     fn generate_function(&self, func: &FunctionDecl, out: &mut String) {
@@ -146,6 +162,40 @@ impl<'a> CodeGenerator<'a> {
                     self.generate_expr(value)
                 ));
             }
+            Stmt::Match {
+                scrutinee,
+                arms,
+                else_branch,
+                ..
+            } => {
+                out.push_str(&format!(
+                    "{indent}match {} {{\n",
+                    self.generate_expr(scrutinee)
+                ));
+                for arm in arms {
+                    let patterns: Vec<String> = arm
+                        .patterns
+                        .iter()
+                        .map(|p| format!("{}::{}", p.enum_name, p.variant))
+                        .collect();
+                    out.push_str(&format!(
+                        "{indent}    {} => {{\n",
+                        patterns.join(" | ")
+                    ));
+                    for s in &arm.body {
+                        self.generate_stmt(s, out, indent_level + 2);
+                    }
+                    out.push_str(&format!("{indent}    }}\n"));
+                }
+                if let Some(stmts) = else_branch {
+                    out.push_str(&format!("{indent}    _ => {{\n"));
+                    for s in stmts {
+                        self.generate_stmt(s, out, indent_level + 2);
+                    }
+                    out.push_str(&format!("{indent}    }}\n"));
+                }
+                out.push_str(&format!("{indent}}}\n"));
+            }
             Stmt::Expr(expr) => {
                 out.push_str(&format!("{indent}{};\n", self.generate_expr(expr)));
             }
@@ -158,6 +208,7 @@ impl<'a> CodeGenerator<'a> {
             ExprKind::BoolLit(val) => format!("{val}"),
             ExprKind::StrLit(val) => format!("{val:?}.to_string()"),
             ExprKind::Variable(name) => name.clone(),
+            ExprKind::Variant { enum_name, variant } => format!("{enum_name}::{variant}"),
             ExprKind::Unary { op, expr } => {
                 format!("({}{})", op.as_str(), self.generate_expr(expr))
             }
