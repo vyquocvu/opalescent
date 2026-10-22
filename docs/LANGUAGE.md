@@ -41,7 +41,7 @@ cargo run -- build examples/hello.opal -o hello
 - `enum Name ... end` with unit variants and `Name.Variant` expressions.
 - `match expr` with `when Name.Variant[, ...]` arms plus optional `else`/`end`; coverage is checked at compile time.
 - `let name: Type = expression` and `let mut name: Type = expression`.
-- Assignments, `return`, `puts`, `if/else/end`, `while/end`.
+- Assignments, `return`, `puts`, `if/else/end`, `while/end`. `puts` is a built-in statement keyword and is not available as a user-defined name.
 - Integers, strings, booleans, function calls, parentheses, arithmetic, comparisons, boolean operations and unary `!`/`-`.
 - `#` comments outside strings.
 

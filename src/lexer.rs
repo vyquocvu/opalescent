@@ -268,6 +268,7 @@ impl<'a> Lexer<'a> {
             "match" => TokenKind::Match,
             "when" => TokenKind::When,
             "return" => TokenKind::Return,
+            // Intentional built-in statement keyword, not a user identifier.
             "puts" => TokenKind::Puts,
             "true" => TokenKind::True,
             "false" => TokenKind::False,

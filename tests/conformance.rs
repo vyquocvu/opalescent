@@ -38,6 +38,7 @@ const FAIL: &[(&str, &str, &str, usize)] = &[
     ("unreachable_match_else", "enum C\nA\nend\ndef main()\nlet x: C = C.A\nmatch x\nwhen C.A\nputs 1\nelse\nputs 2\nend\nend", "unreachable `else`", 10),
     ("match_no_arms", "enum C\nA\nend\ndef main()\nlet x: C = C.A\nmatch x\nend\nend", "must have at least one `when` arm or an `else` branch", 6),
     ("puts_enum", "enum C\nA\nend\ndef main()\nputs C.A\nend", "must be printable", 5),
+    ("puts_not_an_identifier", "def puts() -> Unit\nend\ndef main()\nend", "expected identifier, found `puts`", 1),
 ];
 
 #[test]

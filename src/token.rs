@@ -67,7 +67,7 @@ impl TokenKind {
                 | "pub" | "unsafe" | "as" | "return" | "true" | "false" | "end" | "def" | "do"
                 | "struct" | "impl" | "trait" | "enum" | "const" | "static" | "move" | "ref"
                 | "self" | "Self" | "crate" | "super" | "type" | "where" | "async" | "await"
-                | "extern" | "puts"
+                | "extern"
         )
     }
 
