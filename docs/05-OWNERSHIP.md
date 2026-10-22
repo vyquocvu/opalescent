@@ -44,3 +44,6 @@ D. Region / reference-count / generational hybrid only if costs and guarantees e
 
 ## Decision gate
 Build a corpus of 50+ positive/negative programs; define formal small-step operational rules or an equivalent ownership judgment; demonstrate sound lowering to generated Rust with an auditable mapping. Record counterexamples to any inference heuristic.
+
+## Current enforcement boundary (MVP)
+The frontend currently checks parameter-mode compatibility at call sites, rejects immutable-to-`mut` calls, detects repeated `mut`/`take` arguments in one call, and tracks use-after-move for consumed strings. It does **not** independently prove borrow lifetimes, nested-expression aliasing, partial moves, drop order or the wider access matrix; those are delegated to `rustc` through the generated Rust. Until a typed HIR/MIR and independent access analysis exist, "sound" claims apply to the frontend checks above plus the emitted Rust, not to Opalescent semantics as a whole.
