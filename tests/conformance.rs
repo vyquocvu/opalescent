@@ -21,6 +21,8 @@ const FAIL: &[(&str, &str, &str, usize)] = &[
     ("immutable_to_mut", "def u(s: mut String) -> Unit\nend\ndef main()\nlet m: String = \"a\"\nu(m)\nend", "cannot pass immutable variable `m` as mutable argument", 5),
     ("exclusivity", "def f(a: mut Int, b: mut Int) -> Unit\nend\ndef main()\nlet mut x: Int = 1\nf(x, x)\nend", "while it is also used in another argument", 5),
     ("unterminated_string", "def main()\nputs \"abc\nend", "", 2),
+    // Line 0 means "skip the span assertion": `unclosed_if` surfaces at EOF,
+    // where the reported span is not stable enough to assert.
     ("unclosed_if", "def main()\nif true\nend", "", 0),
     ("injection", "def main()\nputs 1; std::process::exit(1)\nend", "", 2),
     ("dup_enum", "enum C\nA\nend\nenum C\nB\nend\ndef main()\nend", "duplicate enum definition: `C`", 4),
