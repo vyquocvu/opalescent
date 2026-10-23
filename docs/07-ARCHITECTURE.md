@@ -27,3 +27,8 @@ Frontend defines Opalescent semantics; Rust output is a verified implementation 
 
 ## Caveat about present MVP
 The current MVP is a small proof-of-concept Rust emitter, not a sound independent frontend; its limited parser, source mapping, semantic analysis and tests should not be mistaken for stable implementation of these proposals.
+
+## Frontend vs rustc soundness boundary (current MVP)
+The Opalescent frontend itself enforces: duplicate/undefined names, declared and expression types, enum type names and `match` coverage, parameter-mode compatibility at call sites, call-argument exclusivity for `mut`/`take`, and a conservative use-after-move check for consumed strings.
+
+It does **not** yet prove the full ownership model. Borrow lifetimes, aliasing across nested expressions, partial moves, drop order and most of the access matrix are enforced by the generated Rust through `rustc`. A program accepted by `opal check` is therefore only as sound as the emitted Rust plus the frontend checks listed above. Closing this gap requires a typed HIR/MIR and an independent access analysis, as required by the decision gate in [05-OWNERSHIP.md](05-OWNERSHIP.md).

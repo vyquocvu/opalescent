@@ -1,20 +1,23 @@
 use crate::span::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Int,
     Bool,
     String,
     Unit,
+    /// User-defined enum, identified by name.
+    Enum(String),
 }
 
 impl TypeKind {
-    pub fn rust_type(&self) -> &'static str {
+    pub fn rust_type(&self) -> &str {
         match self {
             TypeKind::Int => "i64",
             TypeKind::Bool => "bool",
             TypeKind::String => "String",
             TypeKind::Unit => "()",
+            TypeKind::Enum(name) => name,
         }
     }
 }
@@ -108,6 +111,11 @@ pub enum ExprKind {
     BoolLit(bool),
     StrLit(String),
     Variable(String),
+    /// Qualified enum variant, e.g. `Color.Red`.
+    Variant {
+        enum_name: String,
+        variant: String,
+    },
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,
@@ -168,7 +176,28 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+    Match {
+        scrutinee: Expr,
+        arms: Vec<MatchArm>,
+        else_branch: Option<Vec<Stmt>>,
+        span: Span,
+    },
     Expr(Expr),
+}
+
+/// A qualified variant pattern, e.g. `Color.Red`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pattern {
+    pub enum_name: String,
+    pub variant: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchArm {
+    pub patterns: Vec<Pattern>,
+    pub body: Vec<Stmt>,
+    pub span: Span,
 }
 
 impl Stmt {
@@ -179,6 +208,7 @@ impl Stmt {
             | Stmt::If { span, .. }
             | Stmt::While { span, .. }
             | Stmt::Return { span, .. }
+            | Stmt::Match { span, .. }
             | Stmt::Puts { span, .. } => *span,
             Stmt::Expr(e) => e.span,
         }
@@ -195,6 +225,20 @@ pub struct FunctionDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
+    pub enums: Vec<EnumDecl>,
     pub functions: Vec<FunctionDecl>,
 }

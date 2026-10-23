@@ -18,15 +18,20 @@ impl Parser {
     }
 
     fn parse_program(&mut self) -> Result<Program, Diagnostic> {
+        let mut enums = Vec::new();
         let mut functions = Vec::new();
         self.skip_newlines();
 
         while !self.is_eof() {
-            functions.push(self.parse_function()?);
+            if self.check(&TokenKind::Enum) {
+                enums.push(self.parse_enum()?);
+            } else {
+                functions.push(self.parse_function()?);
+            }
             self.skip_newlines();
         }
 
-        Ok(Program { functions })
+        Ok(Program { enums, functions })
     }
 
     fn parse_function(&mut self) -> Result<FunctionDecl, Diagnostic> {
@@ -123,6 +128,7 @@ impl Parser {
             TokenKind::Puts => self.parse_puts(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Match => self.parse_match(),
             TokenKind::Ident(_) if self.peek_next_kind() == Some(&TokenKind::Equal) => {
                 self.parse_assignment()
             }
@@ -265,6 +271,116 @@ impl Parser {
         })
     }
 
+    fn parse_match(&mut self) -> Result<Stmt, Diagnostic> {
+        let match_tok = self.expect(TokenKind::Match)?;
+        let scrutinee = self.parse_expr()?;
+        self.expect_statement_separator()?;
+
+        let mut arms = Vec::new();
+        self.skip_newlines();
+        while self.check(&TokenKind::When) {
+            let when_tok = self.advance();
+            let mut patterns = Vec::new();
+            loop {
+                patterns.push(self.parse_pattern()?);
+                if self.check(&TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect_statement_separator()?;
+
+            let mut body = Vec::new();
+            self.skip_newlines();
+            while !self.check(&TokenKind::When)
+                && !self.check(&TokenKind::Else)
+                && !self.check(&TokenKind::End)
+                && !self.is_eof()
+            {
+                body.push(self.parse_stmt()?);
+                self.skip_newlines();
+            }
+            arms.push(MatchArm {
+                patterns,
+                body,
+                span: when_tok.span,
+            });
+        }
+
+        let else_branch = if self.check(&TokenKind::Else) {
+            self.advance();
+            self.expect_statement_separator()?;
+            let mut stmts = Vec::new();
+            self.skip_newlines();
+            while !self.check(&TokenKind::End) && !self.is_eof() {
+                stmts.push(self.parse_stmt()?);
+                self.skip_newlines();
+            }
+            Some(stmts)
+        } else {
+            None
+        };
+
+        let end_tok = self.expect(TokenKind::End)?;
+        Ok(Stmt::Match {
+            scrutinee,
+            arms,
+            else_branch,
+            span: match_tok.span.combine(end_tok.span),
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, Diagnostic> {
+        let enum_tok = self.expect_ident()?;
+        let enum_name = match enum_tok.kind {
+            TokenKind::Ident(s) => s,
+            _ => unreachable!(),
+        };
+        self.expect(TokenKind::Dot)?;
+        let variant_tok = self.expect_ident()?;
+        let variant = match variant_tok.kind {
+            TokenKind::Ident(s) => s,
+            _ => unreachable!(),
+        };
+        Ok(Pattern {
+            enum_name,
+            variant,
+            span: enum_tok.span.combine(variant_tok.span),
+        })
+    }
+
+    fn parse_enum(&mut self) -> Result<EnumDecl, Diagnostic> {
+        let enum_tok = self.expect(TokenKind::Enum)?;
+        let name_tok = self.expect_ident()?;
+        let name = match name_tok.kind {
+            TokenKind::Ident(s) => s,
+            _ => unreachable!(),
+        };
+        self.expect_statement_separator()?;
+
+        let mut variants = Vec::new();
+        self.skip_newlines();
+        while !self.check(&TokenKind::End) && !self.is_eof() {
+            let tok = self.expect_ident()?;
+            let vname = match tok.kind {
+                TokenKind::Ident(s) => s,
+                _ => unreachable!(),
+            };
+            variants.push(EnumVariant {
+                name: vname,
+                span: tok.span,
+            });
+            self.expect_statement_separator()?;
+        }
+        let end_tok = self.expect(TokenKind::End)?;
+        Ok(EnumDecl {
+            name,
+            variants,
+            span: enum_tok.span.combine(end_tok.span),
+        })
+    }
+
     fn parse_type(&mut self) -> Result<Type, Diagnostic> {
         let token = self.advance();
         let kind = match token.kind {
@@ -272,10 +388,12 @@ impl Parser {
             TokenKind::TyBool => TypeKind::Bool,
             TokenKind::TyString => TypeKind::String,
             TokenKind::TyUnit => TypeKind::Unit,
+            // Resolved (and rejected if unknown) by the analyzer.
+            TokenKind::Ident(name) => TypeKind::Enum(name),
             _ => {
                 return Err(Diagnostic::error(
                     format!(
-                        "expected type (`Int`, `Bool`, `String`, `Unit`), found {}",
+                        "expected type (`Int`, `Bool`, `String`, `Unit` or an enum name), found {}",
                         token.kind.description()
                     ),
                     token.span,
@@ -377,6 +495,21 @@ impl Parser {
                     let rparen = self.expect(TokenKind::RParen)?;
                     let span = token.span.combine(rparen.span);
                     Ok(Expr::new(ExprKind::Call { callee: name, args }, span))
+                } else if self.check(&TokenKind::Dot) {
+                    self.advance(); // consume '.'
+                    let variant_tok = self.expect_ident()?;
+                    let variant = match variant_tok.kind {
+                        TokenKind::Ident(s) => s,
+                        _ => unreachable!(),
+                    };
+                    let span = token.span.combine(variant_tok.span);
+                    Ok(Expr::new(
+                        ExprKind::Variant {
+                            enum_name: name,
+                            variant,
+                        },
+                        span,
+                    ))
                 } else {
                     Ok(Expr::new(ExprKind::Variable(name), token.span))
                 }
